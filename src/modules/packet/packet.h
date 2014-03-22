@@ -9,6 +9,13 @@ typedef struct proto_header_t
 	u_int8_t	slice;
 } __attribute__ ((__packed__)) proto_header;
 
+typedef struct proto_signal_t
+{
+	u_int16_t	len;
+	u_int8_t	src;
+	u_int8_t	time[8];
+}  __attribute__ ((__packed__)) proto_signal;
+
 typedef struct proto_record_t
 {
 	u_int8_t	server;
@@ -20,13 +27,6 @@ typedef struct proto_record_t
 	u_int8_t	time[8];
 	u_int16_t	cic;
 }  __attribute__ ((__packed__)) proto_record;
-
-typedef struct proto_signal_t
-{
-	u_int16_t	len;
-	u_int8_t	src;
-	u_int8_t	time[8];
-}  __attribute__ ((__packed__)) proto_signal;
 
 typedef struct proto_voice_t
 {
