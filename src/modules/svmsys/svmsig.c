@@ -39,13 +39,10 @@ void update_sig(const u_char *packet, u_int len)
 	for (proto_signal *ps = (void *)cnt + sizeof(u_int8_t);
 		(*cnt)--; ps = (void *)ps + sizeof(proto_signal) + ntohs(ps->len)) {
 
-		u_int8_t	*data	= (void *)ps + sizeof(proto_signal);
-
-		u_int8_t	SIO			=	data[3];
-		if (SIO != 0x05 && SIO != 0x85) { continue; }
+		u_int8_t *data = (void *)ps + sizeof(proto_signal);
 
 		u_int8_t dpc1, dpc2, dpc3, opc1, opc2, opc3, pcm, ts, code;
-		switch (SIO)
+		switch (data[3])
 		{
 		case 0x05:
 		{
@@ -68,6 +65,9 @@ void update_sig(const u_char *packet, u_int len)
 			pcm  = data[12];
 			ts   = data[11];
 			code = data[13];
+			break;
+		default:
+			continue;
 			break;
 		}
 
