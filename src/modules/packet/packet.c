@@ -1,3 +1,6 @@
+#include <sys/select.h>
+#include <sys/time.h>
+
 #include <netinet/in.h>
 #include <netinet/ether.h>
 #include <netinet/udp.h>
@@ -20,7 +23,21 @@ void *packet_rtn(void *arg)
 	char buf[ETH_FRAME_LEN];
 
 	while (1) {
-		int ret = recvfrom(matcher.sock, buf, ETH_FRAME_LEN, 0, NULL, NULL);
+		fd_set rfds; FD_ZERO(&rfds);
+		FD_SET(matcher.socksig, &rfds);
+		FD_SET(matcher.sockvoc, &rfds);
+		int ret = select(FD_SETSIZE, &rfds, NULL, NULL, NULL);
+		do {
+			if (FD_ISSET(matcher.socksig, &rfds)) {
+				ret = recvfrom(matcher.socksig, buf, ETH_FRAME_LEN, 0, NULL, NULL);
+				break;
+			}
+			if (FD_ISSET(matcher.sockvoc, &rfds)) {
+				ret = recvfrom(matcher.sockvoc, buf, ETH_FRAME_LEN, 0, NULL, NULL);
+				break;
+			}
+		} while(0);
+
 		if (ret < 0) {
 			perror(NULL);
 			break;

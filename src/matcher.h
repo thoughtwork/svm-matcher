@@ -77,6 +77,7 @@ typedef struct {
 typedef struct vocts_t {
 	u_int8_t sr155, tug3, tug2, tu12, ts;
 	int8_t state; u_int64_t tick; list_node dpcopc_list;
+	struct timeval timeout;
 } vocts;
 typedef struct {
 	list_node node; vocts *item;
@@ -84,7 +85,8 @@ typedef struct {
 
 typedef struct vocsr155_t {
 	struct sockaddr_ll addr; struct ether_header head;
-	u_int32_t count; list_node rec_list; vocts *ts_list[3][7][3][32], _ts_list[3][7][3][32];
+	list_node rec_list, rec_list0, rec_list1;
+	u_int32_t count; vocts *ts_list[3][7][3][32], _ts_list[3][7][3][32];
 } vocsr155;
 
 typedef struct svmvoc_t {
@@ -93,7 +95,8 @@ typedef struct svmvoc_t {
 
 
 typedef struct matcher_t {
-	int sock; u_char host_addr[8];
+	int sockvoc;
+	int socksig; u_char host_addr[8];
 
 	pthread_mutex_t packet_count_lock;
 	u_int64_t sig_cnt, voc_cnt, rec_cnt;

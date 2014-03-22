@@ -10,7 +10,7 @@
 
 extern struct {
 	struct {
-		char *interface;
+		char *ifsig, *ifvoc;
 	} server;
 	struct {
 		struct {

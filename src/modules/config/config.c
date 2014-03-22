@@ -23,7 +23,7 @@
 
 struct {
 	struct {
-		char *interface;
+		char *ifsig, *ifvoc;
 	} server;
 	struct {
 		struct {
@@ -78,10 +78,16 @@ void load_config(void)
 			xNODE *p_sever = pitem;
 			for (list_node * p_node = NULL; p_sever->nodes && (p_node = list_foreach(p_sever->nodes, p_node));) {
 				xNODE *pitem = *(xNODE**)node2item(p_node, xnode_node_item, node, item);
-				if (pitem->name && !strcmp(pitem->name, "interface")) {
-					xNODE *p_interface = pitem;
-					if (p_interface->text) {
-						APP_CONFIG.server.interface = strdup(p_interface->text);
+				if (pitem->name && !strcmp(pitem->name, "ifsig")) {
+					xNODE *p_ifsig = pitem;
+					if (p_ifsig->text) {
+						APP_CONFIG.server.ifsig = strdup(p_ifsig->text);
+					}
+				}
+				if (pitem->name && !strcmp(pitem->name, "ifvoc")) {
+					xNODE *p_ifvoc = pitem;
+					if (p_ifvoc->text) {
+						APP_CONFIG.server.ifvoc = strdup(p_ifvoc->text);
 					}
 				}
 			}

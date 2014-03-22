@@ -90,7 +90,7 @@ int record(u_int8_t sr155, u_int8_t stm1, u_int8_t tug3, u_int8_t tug2, u_int8_t
 
 	/* Send packet */
 	pthread_mutex_lock(&matcher.packet_count_lock);
-	if (sendto(matcher.sock, sendbuf, tx_len, 0, (struct sockaddr*) &p_vocsr155->addr, sizeof(p_vocsr155->addr)) < 0) {
+	if (sendto(matcher.socksig, sendbuf, tx_len, 0, (struct sockaddr*) &p_vocsr155->addr, sizeof(p_vocsr155->addr)) < 0) {
 		printf("Send failed\n");
 	}
 	matcher.rec_cnt++;
@@ -99,24 +99,110 @@ int record(u_int8_t sr155, u_int8_t stm1, u_int8_t tug3, u_int8_t tug2, u_int8_t
 	return (0);
 }
 
+void *record_rtn(void *arg)
+{
+	pthread_detach(pthread_self());
+
+	while (1) {
+		sleep(60);
+
+		pthread_mutex_lock(&matcher.voc_lock);
+		u_int32_t count = 0; for(int sr155=1; (count < 8*32) && (sr155<=8); sr155++) {
+			vocsr155 *p_vocsr155 = matcher.voc.sr155_list[sr155-1];
+			if (!p_vocsr155) { continue; }
+
+			//printf("checking...\n");
+			for (list_node * p_node = NULL; (p_node = list_foreach(&p_vocsr155->rec_list, p_node));) {
+				vocts *p_vocts = *(vocts**)node2item(p_node, vocts_node_item, node, item);
+
+				//printf("p_vocts->state: %d, p_vocts->tick: %d, p_vocts->timeout.tv_sec: %d\n", p_vocts->state, p_vocts->tick, p_vocts->timeout.tv_sec);
+				if (p_vocts->state == -1) {
+					if (p_vocts->tick != 0) {
+						continue;
+					}
+					struct timeval tv; gettimeofday(&tv, NULL);
+					if (tv.tv_sec - p_vocts->timeout.tv_sec < 300) {
+						continue;
+					}
+				}
+
+				list_node *del_node = p_node; p_node = del_node->prev; list_rmv(del_node);
+				if (p_vocts->state == -1) {
+					p_vocts->state = 0;
+					record(p_vocts->sr155, 0, p_vocts->tug3, p_vocts->tug2, p_vocts->tu12, p_vocts->ts, 2);
+					record(p_vocts->sr155, 1, p_vocts->tug3, p_vocts->tug2, p_vocts->tu12, p_vocts->ts, 2);
+
+					vocts_node_item *p_node_item = node2enty(del_node, vocts_node_item, node);
+					list_add(&p_vocsr155->rec_list1, &p_node_item->node);
+
+					for (u_int8_t sr155=1; sr155<=8; sr155++) {
+						vocsr155 *p_vocsr155 = matcher.voc.sr155_list[sr155-1];
+						if (!p_vocsr155) { continue; }
+
+						vocts *p_vocts = NULL;
+						for (list_node * p_node = NULL; !p_vocts && (p_node = list_get(&p_vocsr155->rec_list0));) {
+							p_vocts = *(vocts**)node2item(p_node, vocts_node_item, node, item);
+							//free(node2enty(p_node, vocts_node_item, node));
+							vocts_node_item *p_node_item = node2enty(p_node, vocts_node_item, node);
+							list_add(&p_vocsr155->rec_list, &p_node_item->node);
+							break;
+						}
+						for (list_node * p_node = NULL; !p_vocts && (p_node = list_get(&p_vocsr155->rec_list1));) {
+							p_vocts = *(vocts**)node2item(p_node, vocts_node_item, node, item);
+							//free(node2enty(p_node, vocts_node_item, node));
+							vocts_node_item *p_node_item = node2enty(p_node, vocts_node_item, node);
+							list_add(&p_vocsr155->rec_list, &p_node_item->node);
+							break;
+						}
+						if (p_vocts) {
+							p_vocts->state = -1; p_vocts->tick = 0; gettimeofday(&p_vocts->timeout, NULL);
+							record(p_vocts->sr155, 0, p_vocts->tug3, p_vocts->tug2, p_vocts->tu12, p_vocts->ts, 1);
+							record(p_vocts->sr155, 1, p_vocts->tug3, p_vocts->tug2, p_vocts->tu12, p_vocts->ts, 1);
+							break;
+						}
+					}
+				} else {
+					free(node2enty(del_node, vocts_node_item, node));
+				}
+			}
+		}
+		pthread_mutex_unlock(&matcher.voc_lock);
+	}
+
+	return NULL;
+}
+
 int init_voc(void)
 {
 	int sock;
+	struct ifreq req_idx;
+
 	if ((sock = socket(AF_PACKET, SOCK_RAW, htons(0x8052))) == -1) {
 		perror("socket");
 		exit(EXIT_FAILURE);
 	}
-	matcher.sock = sock;
+	matcher.sockvoc = sock;
+	memset(&req_idx, 0, sizeof(req_idx));
+	strncpy(req_idx.ifr_name, APP_CONFIG.server.ifvoc, IFNAMSIZ - 1);
+	if (ioctl(sock, SIOCGIFINDEX, &req_idx) < 0) {
+		perror("SIOCGIFINDEX");
+		return (2);
+	}
 
-	struct ifreq req_idx; memset(&req_idx, 0, sizeof(req_idx));
-	strncpy(req_idx.ifr_name, APP_CONFIG.server.interface, IFNAMSIZ - 1);
+	if ((sock = socket(AF_PACKET, SOCK_RAW, htons(0x8052))) == -1) {
+		perror("socket");
+		exit(EXIT_FAILURE);
+	}
+	matcher.socksig = sock;
+	memset(&req_idx, 0, sizeof(req_idx));
+	strncpy(req_idx.ifr_name, APP_CONFIG.server.ifsig, IFNAMSIZ - 1);
 	if (ioctl(sock, SIOCGIFINDEX, &req_idx) < 0) {
 		perror("SIOCGIFINDEX");
 		return (2);
 	}
 
 	struct ifreq req_mac; memset(&req_mac, 0, sizeof(req_mac));
-	strncpy(req_mac.ifr_name, APP_CONFIG.server.interface, IFNAMSIZ - 1);
+	strncpy(req_mac.ifr_name, APP_CONFIG.server.ifvoc, IFNAMSIZ - 1);
 	if (ioctl(sock, SIOCGIFHWADDR, &req_mac) < 0) {
 		perror("SIOCGIFHWADDR");
 		return (2);
@@ -144,7 +230,10 @@ int init_voc(void)
 			p_vocsr155->head = head;
 		}
 		{
-			p_vocsr155->count = 0; init_list(&p_vocsr155->rec_list);
+			p_vocsr155->count = 0;
+			init_list(&p_vocsr155->rec_list);
+			init_list(&p_vocsr155->rec_list0);
+			init_list(&p_vocsr155->rec_list1);
 			for(u_int8_t tug3=1; tug3<=3; tug3++) {
 			for(u_int8_t tug2=1; tug2<=7; tug2++) {
 			for(u_int8_t tu12=1; tu12<=3; tu12++) {
@@ -160,7 +249,7 @@ int init_voc(void)
 				p_vocsr155->ts_list[tug3-1][tug2-1][tu12-1][ts] = p_vocts;
 
 				vocts_node_item *p_node_item = malloc(sizeof(vocts_node_item));
-				p_node_item->item = p_vocts; list_add(&p_vocsr155->rec_list, &p_node_item->node);
+				p_node_item->item = p_vocts; list_add(&p_vocsr155->rec_list0, &p_node_item->node);
 			}}}}
 		}
 		matcher.voc.sr155_list[sr155-1] = p_vocsr155;
@@ -179,16 +268,22 @@ int init_voc(void)
 		vocsr155 *p_vocsr155 = matcher.voc.sr155_list[sr155-1];
 		if (!p_vocsr155) { continue; }
 
-		for (list_node * p_node = NULL; (count < 8*32) && (p_node = list_get(&p_vocsr155->rec_list));) {
+		for (list_node * p_node = NULL; (count < 8*32) && (p_node = list_get(&p_vocsr155->rec_list0));) {
 			vocts *p_vocts = *(vocts**)node2item(p_node, vocts_node_item, node, item);
-			free(node2enty(p_node, vocts_node_item, node));
+			//free(node2enty(p_node, vocts_node_item, node));
+			vocts_node_item *p_node_item = node2enty(p_node, vocts_node_item, node);
+			list_add(&p_vocsr155->rec_list, &p_node_item->node);
 
-			p_vocts->state = -1; p_vocts->tick = 0;
+			p_vocts->state = -1; p_vocts->tick = 0; gettimeofday(&p_vocts->timeout, NULL);
 			record(p_vocts->sr155, 0, p_vocts->tug3, p_vocts->tug2, p_vocts->tu12, p_vocts->ts, 1);
 			record(p_vocts->sr155, 1, p_vocts->tug3, p_vocts->tug2, p_vocts->tu12, p_vocts->ts, 1);
 			count++;
 		}
 	}
+
+	sleep(1);
+	pthread_t pid;
+	pthread_create(&pid, NULL, record_rtn, NULL);
 
 	return 0;
 }
@@ -372,7 +467,7 @@ void compare_voice(vocts *p_vocts)
 
 		vocsr155 *p_vocsr155 = matcher.voc.sr155_list[p_vocts->sr155-1]; p_vocsr155->count--;
 		vocts_node_item *p_node_item = malloc(sizeof(vocts_node_item));
-		p_node_item->item = p_vocts; list_add(&p_vocsr155->rec_list, &p_node_item->node);
+		p_node_item->item = p_vocts; list_add(&p_vocsr155->rec_list0, &p_node_item->node);
 	}
 	vocsr155 *p_vocsr155 = matcher.voc.sr155_list[p_vocts->sr155-1]; p_vocsr155->count++;
 
@@ -386,11 +481,23 @@ void compare_voice(vocts *p_vocts)
 		vocsr155 *p_vocsr155 = matcher.voc.sr155_list[sr155-1];
 		if (!p_vocsr155) { continue; }
 
-		for (list_node * p_node = NULL; (p_node = list_get(&p_vocsr155->rec_list));) {
-			vocts *p_vocts = *(vocts**)node2item(p_node, vocts_node_item, node, item);
-			free(node2enty(p_node, vocts_node_item, node));
-
-			p_vocts->state = -1; p_vocts->tick = 0;
+		vocts *p_vocts = NULL;
+		for (list_node * p_node = NULL; !p_vocts && (p_node = list_get(&p_vocsr155->rec_list0));) {
+			p_vocts = *(vocts**)node2item(p_node, vocts_node_item, node, item);
+			//free(node2enty(p_node, vocts_node_item, node));
+			vocts_node_item *p_node_item = node2enty(p_node, vocts_node_item, node);
+			list_add(&p_vocsr155->rec_list, &p_node_item->node);
+			break;
+		}
+		for (list_node * p_node = NULL; !p_vocts && (p_node = list_get(&p_vocsr155->rec_list1));) {
+			p_vocts = *(vocts**)node2item(p_node, vocts_node_item, node, item);
+			//free(node2enty(p_node, vocts_node_item, node));
+			vocts_node_item *p_node_item = node2enty(p_node, vocts_node_item, node);
+			list_add(&p_vocsr155->rec_list, &p_node_item->node);
+			break;
+		}
+		if (p_vocts) {
+			p_vocts->state = -1; p_vocts->tick = 0; gettimeofday(&p_vocts->timeout, NULL);
 			record(p_vocts->sr155, 0, p_vocts->tug3, p_vocts->tug2, p_vocts->tu12, p_vocts->ts, 1);
 			record(p_vocts->sr155, 1, p_vocts->tug3, p_vocts->tug2, p_vocts->tu12, p_vocts->ts, 1);
 			break;
@@ -422,11 +529,13 @@ void update_voc(const u_char *packet, u_int len)
 
 	pthread_mutex_lock(&matcher.voc_lock);
 	vocts *p_vocts = matcher.voc.sr155_list[sr155-1]->ts_list[tug3-1][tug2-1][tu12-1][ts];
-	if (p_vocts && p_vocts->state == -1 && p_vocts->tick < matcher.sig.tick) {
-		for (int i=1; i<datalen; i++) {
-			if (data[0] != data[i]) {
-				compare_voice(p_vocts);
-				break;
+	if (p_vocts && p_vocts->state == -1) {
+		if (p_vocts->tick < matcher.sig.tick) {
+			for (int i=1; i<datalen; i++) {
+				if (data[0] != data[i]) {
+					compare_voice(p_vocts);
+					break;
+				}
 			}
 		}
 	}
