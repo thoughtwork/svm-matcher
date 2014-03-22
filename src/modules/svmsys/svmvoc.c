@@ -164,8 +164,17 @@ int init_voc(void)
 			}}}}
 		}
 		matcher.voc.sr155_list[sr155-1] = p_vocsr155;
+
+		for(u_int8_t tug3=1; tug3<=3; tug3++) {
+		for(u_int8_t tug2=1; tug2<=7; tug2++) {
+		for(u_int8_t tu12=1; tu12<=3; tu12++) {
+		for(u_int8_t ts=0; ts<32; ts++) {
+			record(sr155, 0, tug3, tug2, tu12, ts, 2);
+			record(sr155, 1, tug3, tug2, tu12, ts, 2);
+		}}}}
 	}
 
+	sleep(1);
 	u_int32_t count = 0; for(int sr155=1; (count < 8*32) && (sr155<=8); sr155++) {
 		vocsr155 *p_vocsr155 = matcher.voc.sr155_list[sr155-1];
 		if (!p_vocsr155) { continue; }
@@ -390,28 +399,36 @@ void compare_voice(vocts *p_vocts)
 }
 void update_voc(const u_char *packet, u_int len)
 {
-	u_int8_t		*cnt	= (void *)packet;
+	proto_voice	*pv	    = (void *)packet;
 
-	for (proto_voice *pv = (void *)cnt + sizeof(u_int8_t); (*cnt)--; pv++) {
-		u_int8_t	sr155	= pv->session_id[0];
-		u_int8_t	tug3	= pv->session_id[2];
-		u_int8_t	tug2	= pv->session_id[3];
-		u_int8_t	tu12	= pv->session_id[4];
-		u_int8_t	ts		= pv->session_id[5];
-		u_int16_t	len		= ntohs(pv->data_len);
-		u_int8_t	*data	= pv->data;
-		if (!matcher.voc.sr155_list[sr155-1]) { continue; }
+	u_int8_t	sr155	= pv->session_id[0];
+	u_int8_t	stm1	= pv->session_id[1];
+	u_int8_t	tug3	= pv->session_id[2];
+	u_int8_t	tug2	= pv->session_id[3];
+	u_int8_t	tu12	= pv->session_id[4];
+	u_int8_t	ts		= pv->session_id[5];
+	u_int16_t	datalen	= ntohs(pv->data_len);
+	u_int8_t	*data	= pv->data;
+//	printf("sr155 %d, tug3 %d, tug2 %d, tu12 %d, ts %d, len %d\n", sr155, tug3, tug2, tu12, ts, datalen);
+	if (sr155 < 1 || sr155 > 8) return;
+	if (stm1 !=0 && stm1 != 1) return;
+	if (tug3 < 1 || tug3 > 3) return;
+	if (tug2 < 1 || tug2 > 7) return;
+	if (tu12 < 1 || tu12 > 3) return;
+	if (ts < 0 || ts > 31) return;
+	if (datalen < 1 || datalen > 1024) return;
 
-		pthread_mutex_lock(&matcher.voc_lock);
-		vocts *p_vocts = matcher.voc.sr155_list[sr155-1]->ts_list[tug3-1][tug2-1][tu12-1][ts];
-		if (p_vocts->state == -1 && p_vocts->tick < matcher.sig.tick) {
-			for (int i=1; i<len; i++) {
-				if (data[0] != data[i]) {
-					compare_voice(p_vocts);
-					break;
-				}
+	if (!matcher.voc.sr155_list[sr155-1]) return;
+
+	pthread_mutex_lock(&matcher.voc_lock);
+	vocts *p_vocts = matcher.voc.sr155_list[sr155-1]->ts_list[tug3-1][tug2-1][tu12-1][ts];
+	if (p_vocts && p_vocts->state == -1 && p_vocts->tick < matcher.sig.tick) {
+		for (int i=1; i<datalen; i++) {
+			if (data[0] != data[i]) {
+				compare_voice(p_vocts);
+				break;
 			}
 		}
-		pthread_mutex_unlock(&matcher.voc_lock);
 	}
+	pthread_mutex_unlock(&matcher.voc_lock);
 }
