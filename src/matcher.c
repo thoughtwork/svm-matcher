@@ -239,7 +239,7 @@ void info_device(u_int8_t id)
 void show_packet()
 {
 	pthread_mutex_lock(&matcher.packet_count_lock);
-	printf("pkt_sig_cnt: %lu, pkt_rec_cnt: %lu, pkt_voc_cnt: %lu\n", matcher.sig_cnt, matcher.rec_cnt, matcher.voc_cnt);
+	printf("pkt_sig_cnt: %llu, pkt_rec_cnt: %llu, pkt_voc_cnt: %llu\n", matcher.sig_cnt, matcher.rec_cnt, matcher.voc_cnt);
 	pthread_mutex_unlock(&matcher.packet_count_lock);
 }
 
